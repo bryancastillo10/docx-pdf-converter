@@ -12,7 +12,7 @@ from src.models import ConversionResult
 class ConverterApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("Batch DOCX to PDF Converter")
+        self.title("Multiple DOCX to PDF Converter")
         self.geometry("760x590")
         self.minsize(640, 500)
         self._set_window_icon()
@@ -49,7 +49,7 @@ class ConverterApp(tk.Tk):
         container.rowconfigure(3, weight=1)
 
         ttk.Label(
-            container, text="Batch DOCX → PDF Converter", style="Title.TLabel"
+            container, text="Word Docx to PDF Converter", style="Title.TLabel"
         ).grid(row=0, column=0, sticky="w", pady=(0, 16))
         ttk.Separator(container).grid(row=1, column=0, sticky="ew", pady=(0, 12))
 
