@@ -6,17 +6,21 @@ from tkinter import filedialog, messagebox, ttk
 
 from src.archive import create_pdf_archive
 from src.converter import convert_documents
+from src.i18n import DEFAULT_LANGUAGE, LANGUAGE_OPTIONS, translate
 from src.models import ConversionResult
 
 
 class ConverterApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("Multiple DOCX to PDF Converter")
         self.geometry("760x590")
         self.minsize(640, 500)
         self._set_window_icon()
 
+        self.language = DEFAULT_LANGUAGE
+        self.language_choice = tk.StringVar(value="EN")
+        self._status_key = "ready"
+        self._status_values: dict[str, object] = {}
         self.files: list[Path] = []
         self.file_items: dict[Path, str] = {}
         self.output_dir = tk.StringVar(
@@ -25,9 +29,10 @@ class ConverterApp(tk.Tk):
         self.create_zip = tk.BooleanVar(value=True)
         self.zip_name = tk.StringVar(value="converted_files.zip")
         self.progress_text = tk.StringVar(value="0%")
-        self.status = tk.StringVar(value="Add Word documents to get started.")
+        self.status = tk.StringVar()
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self._build_ui()
+        self._apply_language()
 
     def _set_window_icon(self) -> None:
         icon_path = Path(__file__).resolve().parent.parent / "assets" / "app.ico"
@@ -48,18 +53,32 @@ class ConverterApp(tk.Tk):
         container.columnconfigure(0, weight=1)
         container.rowconfigure(3, weight=1)
 
-        ttk.Label(
-            container, text="Word Docx to PDF Converter", style="Title.TLabel"
-        ).grid(row=0, column=0, sticky="w", pady=(0, 16))
+        header = ttk.Frame(container)
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 16))
+        header.columnconfigure(0, weight=1)
+        self.title_label = ttk.Label(header, style="Title.TLabel")
+        self.title_label.grid(row=0, column=0, sticky="w")
+        self.language_label = ttk.Label(header)
+        self.language_label.grid(row=0, column=1, padx=(12, 6))
+        self.language_selector = ttk.Combobox(
+            header,
+            textvariable=self.language_choice,
+            values=tuple(LANGUAGE_OPTIONS),
+            state="readonly",
+            width=7,
+        )
+        self.language_selector.grid(row=0, column=2)
+        self.language_selector.bind("<<ComboboxSelected>>", self._change_language)
         ttk.Separator(container).grid(row=1, column=0, sticky="ew", pady=(0, 12))
 
         actions = ttk.Frame(container)
         actions.grid(row=2, column=0, sticky="w", pady=(0, 10))
-        ttk.Button(actions, text="Add Files", command=self._add_files).pack(side="left")
-        ttk.Button(actions, text="Remove", command=self._remove_selected).pack(
-            side="left", padx=8
-        )
-        ttk.Button(actions, text="Clear", command=self._clear_files).pack(side="left")
+        self.add_button = ttk.Button(actions, command=self._add_files)
+        self.add_button.pack(side="left")
+        self.remove_button = ttk.Button(actions, command=self._remove_selected)
+        self.remove_button.pack(side="left", padx=8)
+        self.clear_button = ttk.Button(actions, command=self._clear_files)
+        self.clear_button.pack(side="left")
 
         list_frame = ttk.Frame(container)
         list_frame.grid(row=3, column=0, sticky="nsew")
@@ -73,7 +92,6 @@ class ConverterApp(tk.Tk):
             height=9,
         )
         self.file_list.heading("status", text="")
-        self.file_list.heading("file", text="Selected Word files")
         self.file_list.column(
             "status", width=48, minwidth=48, stretch=False, anchor="center"
         )
@@ -85,34 +103,42 @@ class ConverterApp(tk.Tk):
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.file_list.configure(yscrollcommand=scrollbar.set)
 
-        output_frame = ttk.LabelFrame(container, text="Output", padding=12)
-        output_frame.grid(row=4, column=0, sticky="ew", pady=(14, 12))
-        output_frame.columnconfigure(1, weight=1)
-        ttk.Label(output_frame, text="Output Folder:").grid(
+        self.output_frame = ttk.LabelFrame(container, padding=12)
+        self.output_frame.grid(row=4, column=0, sticky="ew", pady=(14, 12))
+        self.output_frame.columnconfigure(1, weight=1)
+        self.output_folder_label = ttk.Label(self.output_frame)
+        self.output_folder_label.grid(
             row=0, column=0, sticky="w", padx=(0, 8)
         )
-        ttk.Entry(output_frame, textvariable=self.output_dir).grid(
+        ttk.Entry(self.output_frame, textvariable=self.output_dir).grid(
             row=0, column=1, sticky="ew"
         )
-        ttk.Button(output_frame, text="Browse", command=self._choose_output_dir).grid(
+        self.browse_button = ttk.Button(
+            self.output_frame, command=self._choose_output_dir
+        )
+        self.browse_button.grid(
             row=0, column=2, padx=(8, 0)
         )
-        ttk.Checkbutton(
-            output_frame,
-            text="Create ZIP after conversion",
+        self.zip_checkbutton = ttk.Checkbutton(
+            self.output_frame,
             variable=self.create_zip,
             command=self._toggle_zip_name,
-        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(12, 8))
-        ttk.Label(output_frame, text="ZIP Name:").grid(
+        )
+        self.zip_checkbutton.grid(
+            row=1, column=0, columnspan=3, sticky="w", pady=(12, 8)
+        )
+        self.zip_name_label = ttk.Label(self.output_frame)
+        self.zip_name_label.grid(
             row=2, column=0, sticky="w", padx=(0, 8)
         )
-        self.zip_entry = ttk.Entry(output_frame, textvariable=self.zip_name)
+        self.zip_entry = ttk.Entry(self.output_frame, textvariable=self.zip_name)
         self.zip_entry.grid(row=2, column=1, sticky="ew")
 
         progress_header = ttk.Frame(container)
         progress_header.grid(row=5, column=0, sticky="ew")
         progress_header.columnconfigure(0, weight=1)
-        ttk.Label(progress_header, text="Progress:", style="Section.TLabel").grid(
+        self.progress_label = ttk.Label(progress_header, style="Section.TLabel")
+        self.progress_label.grid(
             row=0, column=0, sticky="w"
         )
         ttk.Label(progress_header, textvariable=self.progress_text).grid(
@@ -121,7 +147,8 @@ class ConverterApp(tk.Tk):
         self.progress = ttk.Progressbar(container, mode="determinate", maximum=100)
         self.progress.grid(row=6, column=0, sticky="ew", pady=(5, 10))
 
-        ttk.Label(container, text="Status:", style="Section.TLabel").grid(
+        self.status_label = ttk.Label(container, style="Section.TLabel")
+        self.status_label.grid(
             row=7, column=0, sticky="w"
         )
         ttk.Label(container, textvariable=self.status).grid(
@@ -129,16 +156,50 @@ class ConverterApp(tk.Tk):
         )
         self.convert_button = ttk.Button(
             container,
-            text="Convert",
             style="Convert.TButton",
             command=self._start_conversion,
         )
         self.convert_button.grid(row=9, column=0, sticky="e")
 
+    def _t(self, key: str, **values: object) -> str:
+        return translate(self.language, key, **values)
+
+    def _set_status(self, key: str, **values: object) -> None:
+        self._status_key = key
+        self._status_values = values
+        self.status.set(self._t(key, **values))
+
+    def _change_language(self, _event: object = None) -> None:
+        self.language = LANGUAGE_OPTIONS.get(
+            self.language_choice.get(), DEFAULT_LANGUAGE
+        )
+        self._apply_language()
+
+    def _apply_language(self) -> None:
+        self.title(self._t("window_title"))
+        self.title_label.configure(text=self._t("app_title"))
+        self.language_label.configure(text=self._t("language"))
+        self.add_button.configure(text=self._t("add_files"))
+        self.remove_button.configure(text=self._t("remove"))
+        self.clear_button.configure(text=self._t("clear"))
+        self.file_list.heading("file", text=self._t("selected_files"))
+        self.output_frame.configure(text=self._t("output"))
+        self.output_folder_label.configure(text=self._t("output_folder"))
+        self.browse_button.configure(text=self._t("browse"))
+        self.zip_checkbutton.configure(text=self._t("create_zip"))
+        self.zip_name_label.configure(text=self._t("zip_name"))
+        self.progress_label.configure(text=self._t("progress"))
+        self.status_label.configure(text=self._t("status"))
+        self.convert_button.configure(text=self._t("convert"))
+        self.status.set(self._t(self._status_key, **self._status_values))
+
     def _add_files(self) -> None:
         selected = filedialog.askopenfilenames(
-            title="Choose Word documents",
-            filetypes=[("Word documents", "*.docx *.doc"), ("All files", "*.*")],
+            title=self._t("choose_documents"),
+            filetypes=[
+                (self._t("word_documents"), "*.docx *.doc"),
+                (self._t("all_files"), "*.*"),
+            ],
         )
         known = set(self.files)
         for name in selected:
@@ -149,7 +210,7 @@ class ConverterApp(tk.Tk):
                     "", tk.END, values=("✓", path.name)
                 )
                 known.add(path)
-        self.status.set(f"{len(self.files)} file(s) selected.")
+        self._set_status("files_selected", count=len(self.files))
 
     def _remove_selected(self) -> None:
         selected_ids = set(self.file_list.selection())
@@ -159,7 +220,7 @@ class ConverterApp(tk.Tk):
         for path in removed:
             self.files.remove(path)
             self.file_list.delete(self.file_items.pop(path))
-        self.status.set(f"{len(self.files)} file(s) selected.")
+        self._set_status("files_selected", count=len(self.files))
 
     def _clear_files(self) -> None:
         self.files.clear()
@@ -167,11 +228,11 @@ class ConverterApp(tk.Tk):
         self.file_list.delete(*self.file_list.get_children())
         self.progress.configure(value=0)
         self.progress_text.set("0%")
-        self.status.set("Add Word documents to get started.")
+        self._set_status("ready")
 
     def _choose_output_dir(self) -> None:
         selected = filedialog.askdirectory(
-            title="Choose output folder", initialdir=self.output_dir.get()
+            title=self._t("choose_output"), initialdir=self.output_dir.get()
         )
         if selected:
             self.output_dir.set(selected)
@@ -185,14 +246,14 @@ class ConverterApp(tk.Tk):
         name = self.zip_name.get().strip()
         if not name:
             messagebox.showwarning(
-                "Missing ZIP name", "Enter a name for the ZIP archive."
+                self._t("missing_zip_title"), self._t("missing_zip_message")
             )
             return None
         if not name.lower().endswith(".zip"):
             name += ".zip"
         if Path(name).name != name or name in {".zip", "..zip"}:
             messagebox.showwarning(
-                "Invalid ZIP name", "Enter a filename such as converted_files.zip."
+                self._t("invalid_zip_title"), self._t("invalid_zip_message")
             )
             return None
         self.zip_name.set(name)
@@ -200,11 +261,15 @@ class ConverterApp(tk.Tk):
 
     def _start_conversion(self) -> None:
         if not self.files:
-            messagebox.showwarning("No files", "Choose at least one Word document.")
+            messagebox.showwarning(
+                self._t("no_files_title"), self._t("no_files_message")
+            )
             return
         output_text = self.output_dir.get().strip()
         if not output_text:
-            messagebox.showwarning("No output folder", "Choose an output folder.")
+            messagebox.showwarning(
+                self._t("no_output_title"), self._t("no_output_message")
+            )
             return
 
         archive_name: str | None = None
@@ -221,7 +286,7 @@ class ConverterApp(tk.Tk):
         self.convert_button.configure(state="disabled")
         self.progress.configure(value=0)
         self.progress_text.set("0%")
-        self.status.set(f"Converted 0 of {len(self.files)} files...")
+        self._set_status("converting", current=0, total=len(self.files))
         threading.Thread(
             target=self._convert_worker,
             args=(list(self.files), output_dir, archive_name),
@@ -263,7 +328,7 @@ class ConverterApp(tk.Tk):
                         self.file_list.item(
                             item_id, values=(marker, result.source.name)
                         )
-                    self.status.set(f"Converted {current} of {total} files...")
+                    self._set_status("converting", current=current, total=total)
                 elif event == "done":
                     self._finish_conversion(*payload)
                     return
@@ -280,21 +345,23 @@ class ConverterApp(tk.Tk):
         self.convert_button.configure(state="normal")
         failures = [result for result in results if not result.succeeded]
         success_count = len(results) - len(failures)
-        self.status.set(f"Finished: {success_count} converted, {len(failures)} failed.")
+        self._set_status(
+            "finished", success=success_count, failed=len(failures)
+        )
 
         details = [
-            f"Converted {success_count} of {len(results)} file(s).",
-            f"Output: {output_dir}",
+            self._t("result_summary", success=success_count, total=len(results)),
+            self._t("result_output", path=output_dir),
         ]
         if archive:
-            details.append(f"ZIP: {archive}")
+            details.append(self._t("result_zip", path=archive))
         if archive_error:
-            details.append(f"ZIP error: {archive_error}")
+            details.append(self._t("zip_error", error=archive_error))
         if failures:
-            details.append("\nFailed files:")
+            details.append(f"\n{self._t('failed_files')}")
             details.extend(f"- {item.source.name}: {item.error}" for item in failures)
             messagebox.showwarning(
-                "Conversion completed with errors", "\n".join(details)
+                self._t("completed_errors_title"), "\n".join(details)
             )
         else:
-            messagebox.showinfo("Conversion complete", "\n".join(details))
+            messagebox.showinfo(self._t("completed_title"), "\n".join(details))
