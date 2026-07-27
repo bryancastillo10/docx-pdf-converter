@@ -1,2 +1,7 @@
 src/__pycache__
 docpdfenv
+
+##Build
+build/*
+dist/*
+main.spec
