@@ -42,14 +42,40 @@ def _convert_with_libreoffice(source: Path, output_dir: Path, executable: str) -
         check=False,
     )
     if process.returncode != 0:
-        details = process.stderr.strip() or process.stdout.strip() or "Unknown LibreOffice error"
+        details = (
+            process.stderr.strip()
+            or process.stdout.strip()
+            or "Unknown LibreOffice error"
+        )
         raise RuntimeError(f"LibreOffice conversion failed: {details}")
 
 
 def _convert_with_word(source: Path, output: Path) -> None:
-    from docx2pdf import convert
+    if platform.system() == "Darwin":
+        from docx2pdf import convert
 
-    convert(str(source), str(output))
+        convert(str(source), str(output))
+        return
+
+    # docx2pdf wraps this same Word COM operation in a tqdm progress bar.
+    import pythoncom
+    import win32com.client
+
+    word = None
+    document = None
+    pythoncom.CoInitialize()
+    try:
+        word = win32com.client.DispatchEx("Word.Application")
+        word.Visible = False
+        word.DisplayAlerts = 0
+        document = word.Documents.Open(str(source.resolve()), ReadOnly=True)
+        document.SaveAs(str(output.resolve()), FileFormat=17)  # wdFormatPDF
+    finally:
+        if document is not None:
+            document.Close(False)
+        if word is not None:
+            word.Quit()
+        pythoncom.CoUninitialize()
 
 
 def convert_document(source: Path, output_dir: Path) -> Path:
@@ -103,9 +129,13 @@ def convert_documents(
 
     for index, source in enumerate(source_list, start=1):
         try:
-            result = ConversionResult(source=source, output=convert_document(source, output_dir))
+            result = ConversionResult(
+                source=source, output=convert_document(source, output_dir)
+            )
         except Exception as exc:
-            result = ConversionResult(source=source, error=str(exc) or type(exc).__name__)
+            result = ConversionResult(
+                source=source, error=str(exc) or type(exc).__name__
+            )
         results.append(result)
         if on_result:
             on_result(result, index, len(source_list))
