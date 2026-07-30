@@ -7,7 +7,9 @@ from typing import Callable, Iterable
 
 from src.models import ConversionResult
 
-SUPPORTED_EXTENSIONS = {".doc", ".docx"}
+WORD_EXTENSIONS = {".doc", ".docx"}
+POWERPOINT_EXTENSIONS = {".ppt", ".pptx"}
+SUPPORTED_EXTENSIONS = WORD_EXTENSIONS | POWERPOINT_EXTENSIONS
 
 
 def _find_libreoffice() -> str | None:
@@ -26,12 +28,17 @@ def _find_libreoffice() -> str | None:
 
 
 def _convert_with_libreoffice(source: Path, output_dir: Path, executable: str) -> None:
+    pdf_filter = (
+        "impress_pdf_Export"
+        if source.suffix.lower() in POWERPOINT_EXTENSIONS
+        else "writer_pdf_Export"
+    )
     process = subprocess.run(
         [
             executable,
             "--headless",
             "--convert-to",
-            "pdf:writer_pdf_Export",
+            f"pdf:{pdf_filter}",
             "--outdir",
             str(output_dir),
             str(source),
@@ -78,9 +85,39 @@ def _convert_with_word(source: Path, output: Path) -> None:
         pythoncom.CoUninitialize()
 
 
+def _convert_with_powerpoint(source: Path, output: Path) -> None:
+    if platform.system() != "Windows":
+        raise RuntimeError(
+            "Microsoft PowerPoint conversion is only available on Windows"
+        )
+
+    import pythoncom
+    import win32com.client
+
+    powerpoint = None
+    presentation = None
+    pythoncom.CoInitialize()
+    try:
+        powerpoint = win32com.client.DispatchEx("PowerPoint.Application")
+        presentation = powerpoint.Presentations.Open(
+            str(source.resolve()),
+            ReadOnly=True,
+            Untitled=False,
+            WithWindow=False,
+        )
+        presentation.SaveAs(str(output.resolve()), 32)  # ppSaveAsPDF
+    finally:
+        if presentation is not None:
+            presentation.Close()
+        if powerpoint is not None:
+            powerpoint.Quit()
+        pythoncom.CoUninitialize()
+
+
 def convert_document(source: Path, output_dir: Path) -> Path:
-    """Convert a Word document and preserve its filename stem."""
-    if source.suffix.lower() not in SUPPORTED_EXTENSIONS:
+    """Convert a supported Office document and preserve its filename stem."""
+    extension = source.suffix.lower()
+    if extension not in SUPPORTED_EXTENSIONS:
         raise ValueError(f"Unsupported file type: {source.suffix}")
     if not source.is_file():
         raise FileNotFoundError(source)
@@ -89,7 +126,7 @@ def convert_document(source: Path, output_dir: Path) -> Path:
     output = output_dir / f"{source.stem}.pdf"
     errors: list[str] = []
 
-    if platform.system() in {"Windows", "Darwin"}:
+    if extension in WORD_EXTENSIONS and platform.system() in {"Windows", "Darwin"}:
         try:
             _convert_with_word(source, output)
         except Exception as exc:
@@ -98,6 +135,15 @@ def convert_document(source: Path, output_dir: Path) -> Path:
             if output.is_file():
                 return output
             errors.append("Microsoft Word finished without creating a PDF")
+    elif extension in POWERPOINT_EXTENSIONS and platform.system() == "Windows":
+        try:
+            _convert_with_powerpoint(source, output)
+        except Exception as exc:
+            errors.append(f"Microsoft PowerPoint: {str(exc) or type(exc).__name__}")
+        else:
+            if output.is_file():
+                return output
+            errors.append("Microsoft PowerPoint finished without creating a PDF")
 
     libreoffice = _find_libreoffice()
     if libreoffice:
@@ -115,7 +161,8 @@ def convert_document(source: Path, output_dir: Path) -> Path:
     raise RuntimeError(
         "No conversion backend succeeded. "
         + " | ".join(errors)
-        + ". Install Microsoft Word on Windows/macOS or LibreOffice on any supported platform."
+        + ". Install the matching Microsoft Office app on Windows "
+        "(Word is also supported on macOS) or LibreOffice on any supported platform."
     )
 
 
