@@ -26,7 +26,8 @@ PDF files.
 ```text
 docx-pdf-converter/
 ├── assets/
-│   └── app.ico           # Application icon
+│   ├── logo.ico          # Application icon
+│   └── main_app.png      # Header artwork
 ├── src/
 │   ├── archive.py        # ZIP archive creation
 │   ├── converter.py      # Word/PowerPoint-to-PDF conversion
