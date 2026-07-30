@@ -1,12 +1,13 @@
-# DOCX to PDF Converter
+# Office to PDF Converter
 
-A simple desktop application for converting one or more Microsoft Word
-documents (`.doc` and `.docx`) into PDF files.
+A simple desktop application for converting Microsoft Word documents
+(`.doc` and `.docx`) and PowerPoint presentations (`.ppt` and `.pptx`) into
+PDF files.
 
 ## Features
 
-- Convert multiple Word documents in one operation.
-- Use Microsoft Word or LibreOffice as the conversion backend.
+- Convert multiple Word documents and PowerPoint presentations in one operation.
+- Use the matching Microsoft Office app or LibreOffice as the conversion backend.
 - Switch the interface between English and Traditional Chinese (`ZH-TW`).
 - Select a custom output folder.
 - Display conversion progress and per-file results.
@@ -15,7 +16,9 @@ documents (`.doc` and `.docx`) into PDF files.
 ## Requirements
 
 - Python 3.11 or newer
-- Microsoft Word on Windows/macOS, or LibreOffice
+- Microsoft Word on Windows/macOS for Word files
+- Microsoft PowerPoint on Windows for PowerPoint files
+- Or LibreOffice on any supported platform for both file types
 - Dependencies listed in `requirements.txt`
 
 ## Project Structure
@@ -23,10 +26,11 @@ documents (`.doc` and `.docx`) into PDF files.
 ```text
 docx-pdf-converter/
 ├── assets/
-│   └── app.ico           # Application icon
+│   ├── logo.ico          # Application icon
+│   └── main_app.png      # Header artwork
 ├── src/
 │   ├── archive.py        # ZIP archive creation
-│   ├── converter.py      # Word-to-PDF conversion
+│   ├── converter.py      # Word/PowerPoint-to-PDF conversion
 │   ├── gui.py            # Tkinter user interface
 │   ├── i18n.py           # EN and ZH-TW translations
 │   └── models.py         # Conversion result model
@@ -56,14 +60,11 @@ python main.py
 Run the following command from the project root:
 
 ```powershell
-pyinstaller --onedir --noconsole --icon assets/setup.ico main.py
+pyinstaller main.spec
 ```
 
-The packaged application will be created under `dist/main/`.
-
-> The current repository contains `assets/app.ico`. Either rename it to
-> `setup.ico` before running the command above, or change the command to
-> `--icon assets/app.ico`.
+The packaged application will be created under
+`dist/office-to-pdf-converter/`.
 
 ## License
 

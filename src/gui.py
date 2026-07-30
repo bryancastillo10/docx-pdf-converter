@@ -1,6 +1,7 @@
 import queue
 import threading
 import tkinter as tk
+from math import ceil
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -13,9 +14,10 @@ from src.models import ConversionResult
 class ConverterApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.geometry("760x590")
-        self.minsize(640, 500)
+        self.geometry("760x640")
+        self.minsize(640, 550)
         self._set_window_icon()
+        self.header_image = self._load_header_image()
 
         self.language = DEFAULT_LANGUAGE
         self.language_choice = tk.StringVar(value="EN")
@@ -35,12 +37,28 @@ class ConverterApp(tk.Tk):
         self._apply_language()
 
     def _set_window_icon(self) -> None:
-        icon_path = Path(__file__).resolve().parent.parent / "assets" / "app.ico"
+        icon_path = Path(__file__).resolve().parent.parent / "assets" / "logo.ico"
         if icon_path.is_file():
             try:
                 self.iconbitmap(default=str(icon_path))
             except tk.TclError:
                 pass
+
+    def _load_header_image(self) -> tk.PhotoImage | None:
+        image_path = (
+            Path(__file__).resolve().parent.parent / "assets" / "main_app.png"
+        )
+        if not image_path.is_file():
+            return None
+
+        try:
+            image = tk.PhotoImage(file=str(image_path))
+        except tk.TclError:
+            return None
+
+        max_size = 76
+        scale = max(1, ceil(max(image.width(), image.height()) / max_size))
+        return image.subsample(scale, scale) if scale > 1 else image
 
     def _build_ui(self) -> None:
         style = ttk.Style(self)
@@ -55,11 +73,15 @@ class ConverterApp(tk.Tk):
 
         header = ttk.Frame(container)
         header.grid(row=0, column=0, sticky="ew", pady=(0, 16))
-        header.columnconfigure(0, weight=1)
+        header.columnconfigure(1, weight=1)
+        self.header_image_label = ttk.Label(
+            header, image=self.header_image if self.header_image else ""
+        )
+        self.header_image_label.grid(row=0, column=0, padx=(0, 14))
         self.title_label = ttk.Label(header, style="Title.TLabel")
-        self.title_label.grid(row=0, column=0, sticky="w")
+        self.title_label.grid(row=0, column=1, sticky="w")
         self.language_label = ttk.Label(header)
-        self.language_label.grid(row=0, column=1, padx=(12, 6))
+        self.language_label.grid(row=0, column=2, padx=(12, 6))
         self.language_selector = ttk.Combobox(
             header,
             textvariable=self.language_choice,
@@ -67,7 +89,7 @@ class ConverterApp(tk.Tk):
             state="readonly",
             width=7,
         )
-        self.language_selector.grid(row=0, column=2)
+        self.language_selector.grid(row=0, column=3)
         self.language_selector.bind("<<ComboboxSelected>>", self._change_language)
         ttk.Separator(container).grid(row=1, column=0, sticky="ew", pady=(0, 12))
 
@@ -107,18 +129,14 @@ class ConverterApp(tk.Tk):
         self.output_frame.grid(row=4, column=0, sticky="ew", pady=(14, 12))
         self.output_frame.columnconfigure(1, weight=1)
         self.output_folder_label = ttk.Label(self.output_frame)
-        self.output_folder_label.grid(
-            row=0, column=0, sticky="w", padx=(0, 8)
-        )
+        self.output_folder_label.grid(row=0, column=0, sticky="w", padx=(0, 8))
         ttk.Entry(self.output_frame, textvariable=self.output_dir).grid(
             row=0, column=1, sticky="ew"
         )
         self.browse_button = ttk.Button(
             self.output_frame, command=self._choose_output_dir
         )
-        self.browse_button.grid(
-            row=0, column=2, padx=(8, 0)
-        )
+        self.browse_button.grid(row=0, column=2, padx=(8, 0))
         self.zip_checkbutton = ttk.Checkbutton(
             self.output_frame,
             variable=self.create_zip,
@@ -128,9 +146,7 @@ class ConverterApp(tk.Tk):
             row=1, column=0, columnspan=3, sticky="w", pady=(12, 8)
         )
         self.zip_name_label = ttk.Label(self.output_frame)
-        self.zip_name_label.grid(
-            row=2, column=0, sticky="w", padx=(0, 8)
-        )
+        self.zip_name_label.grid(row=2, column=0, sticky="w", padx=(0, 8))
         self.zip_entry = ttk.Entry(self.output_frame, textvariable=self.zip_name)
         self.zip_entry.grid(row=2, column=1, sticky="ew")
 
@@ -138,9 +154,7 @@ class ConverterApp(tk.Tk):
         progress_header.grid(row=5, column=0, sticky="ew")
         progress_header.columnconfigure(0, weight=1)
         self.progress_label = ttk.Label(progress_header, style="Section.TLabel")
-        self.progress_label.grid(
-            row=0, column=0, sticky="w"
-        )
+        self.progress_label.grid(row=0, column=0, sticky="w")
         ttk.Label(progress_header, textvariable=self.progress_text).grid(
             row=0, column=1, sticky="e"
         )
@@ -148,9 +162,7 @@ class ConverterApp(tk.Tk):
         self.progress.grid(row=6, column=0, sticky="ew", pady=(5, 10))
 
         self.status_label = ttk.Label(container, style="Section.TLabel")
-        self.status_label.grid(
-            row=7, column=0, sticky="w"
-        )
+        self.status_label.grid(row=7, column=0, sticky="w")
         ttk.Label(container, textvariable=self.status).grid(
             row=8, column=0, sticky="w", pady=(3, 14)
         )
@@ -197,7 +209,9 @@ class ConverterApp(tk.Tk):
         selected = filedialog.askopenfilenames(
             title=self._t("choose_documents"),
             filetypes=[
+                (self._t("office_documents"), "*.docx *.doc *.pptx *.ppt"),
                 (self._t("word_documents"), "*.docx *.doc"),
+                (self._t("powerpoint_presentations"), "*.pptx *.ppt"),
                 (self._t("all_files"), "*.*"),
             ],
         )
@@ -345,9 +359,7 @@ class ConverterApp(tk.Tk):
         self.convert_button.configure(state="normal")
         failures = [result for result in results if not result.succeeded]
         success_count = len(results) - len(failures)
-        self._set_status(
-            "finished", success=success_count, failed=len(failures)
-        )
+        self._set_status("finished", success=success_count, failed=len(failures))
 
         details = [
             self._t("result_summary", success=success_count, total=len(results)),
