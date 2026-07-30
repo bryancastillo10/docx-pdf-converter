@@ -197,7 +197,9 @@ class ConverterApp(tk.Tk):
         selected = filedialog.askopenfilenames(
             title=self._t("choose_documents"),
             filetypes=[
+                (self._t("office_documents"), "*.docx *.doc *.pptx *.ppt"),
                 (self._t("word_documents"), "*.docx *.doc"),
+                (self._t("powerpoint_presentations"), "*.pptx *.ppt"),
                 (self._t("all_files"), "*.*"),
             ],
         )
